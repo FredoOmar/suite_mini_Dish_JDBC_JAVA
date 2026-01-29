@@ -19,7 +19,7 @@ public class TestOrders {
         System.out.println("   TEST DU SYSTÈME DE GESTION DES COMMANDES");
         System.out.println("========================================\n");
 
-        // Test de connexion
+
         Connection conn = DBconnection.getDBConnection();
         if (conn == null) {
             System.err.println(" Impossible de se connecter à la base de données!");
@@ -41,10 +41,8 @@ public class TestOrders {
         try {
             String ref1 = generateUniqueReference();
             Order order1 = new Order(ref1);
-
-            // Récupérer les plats depuis la base de données
-            Dish dish1 = dataRetriever.findDishById(1); // Salade fraîche
-            Dish dish2 = dataRetriever.findDishById(2); // Poulet grillé
+            Dish dish1 = dataRetriever.findDishById(1);
+            Dish dish2 = dataRetriever.findDishById(2);
 
             DishOrder dishOrder1 = new DishOrder(order1, dish1, 2);
             DishOrder dishOrder2 = new DishOrder(order1, dish2, 1);
@@ -105,8 +103,8 @@ public class TestOrders {
             String ref2 = generateUniqueReference();
             Order order2 = new Order(ref2);
 
-            Dish dish = dataRetriever.findDishById(2); // Poulet grillé
-            DishOrder dishOrder = new DishOrder(order2, dish, 100); // Quantité très élevée
+            Dish dish = dataRetriever.findDishById(2);
+            DishOrder dishOrder = new DishOrder(order2, dish, 100);
 
             order2.addDishOrder(dishOrder);
 
@@ -148,9 +146,9 @@ public class TestOrders {
             String ref3 = generateUniqueReference();
             Order order3 = new Order(ref3);
 
-            Dish dish1 = dataRetriever.findDishById(1); // Salade fraîche
-            Dish dish2 = dataRetriever.findDishById(2); // Poulet grillé
-            Dish dish4 = dataRetriever.findDishById(4); // Gâteau au chocolat
+            Dish dish1 = dataRetriever.findDishById(1);
+            Dish dish2 = dataRetriever.findDishById(2);
+            Dish dish4 = dataRetriever.findDishById(4);
 
             order3.addDishOrder(new DishOrder(order3, dish1, 3));
             order3.addDishOrder(new DishOrder(order3, dish2, 2));
@@ -180,7 +178,7 @@ public class TestOrders {
             String ref4 = generateUniqueReference();
             Order order4 = new Order(ref4);
 
-            Dish dish1 = dataRetriever.findDishById(1); // Salade fraîche (nécessite Laitue et Tomate)
+            Dish dish1 = dataRetriever.findDishById(1);
             order4.addDishOrder(new DishOrder(order4, dish1, 1));
 
             System.out.println("Création d'une commande de 1 Salade fraîche");

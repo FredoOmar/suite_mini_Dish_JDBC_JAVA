@@ -65,7 +65,7 @@ public class TestSales {
         try {
             String ref2 = generateUniqueReference();
             Order order2 = new Order(ref2);
-            order2.setPaymentStatus(PaymentStatusEnum.PAID); // Payée
+            order2.setPaymentStatus(PaymentStatusEnum.PAID);
 
             Dish dish1 = dataRetriever.findDishById(1);
             Dish dish2 = dataRetriever.findDishById(2);
@@ -157,7 +157,7 @@ public class TestSales {
             Order order5 = new Order(ref5);
             order5.setPaymentStatus(PaymentStatusEnum.UNPAID);
 
-            Dish dish4 = dataRetriever.findDishById(4); // Gâteau au chocolat
+            Dish dish4 = dataRetriever.findDishById(4);
             order5.addDishOrder(new DishOrder(order5, dish4, 3));
 
             Order savedOrder5 = dataRetriever.saveOrder(order5);
