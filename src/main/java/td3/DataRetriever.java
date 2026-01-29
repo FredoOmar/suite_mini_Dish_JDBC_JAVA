@@ -352,6 +352,13 @@ public class DataRetriever {
         return findIngredientsByCriteria(ingredientName, null, null, 0, 10);
     }
 
+    /**
+     * Sauvegarde une commande dans la base de données
+     * Vérifie d'abord que les ingrédients en stock sont suffisants pour tous les plats
+     * @param orderToSave La commande à sauvegarder
+     * @return La commande sauvegardée avec son ID
+     * @throws InsufficientStockException Si un ingrédient n'est pas en quantité suffisante
+     */
     public Order saveOrder(Order orderToSave) throws InsufficientStockException {
         String insertOrderQuery = "INSERT INTO \"Order\" (reference, creation_datetime) VALUES (?, ?) RETURNING id";
         String insertDishOrderQuery = "INSERT INTO dish_order (id_order, id_dish, quantity) VALUES (?, ?, ?)";
@@ -362,6 +369,8 @@ public class DataRetriever {
         try {
             conn = DBconnection.getDBConnection();
             conn.setAutoCommit(false);
+
+            // Étape 1: Vérifier les stocks pour tous les plats de la commande
             Map<Integer, Double> ingredientRequirements = new HashMap<>();
 
             for (DishOrder dishOrder : orderToSave.getDishOrders()) {
@@ -375,6 +384,8 @@ public class DataRetriever {
                             ingredientRequirements.getOrDefault(ingredientId, 0.0) + requiredQty);
                 }
             }
+
+            // Vérifier que chaque ingrédient est disponible en quantité suffisante
             try (PreparedStatement checkStmt = conn.prepareStatement(checkStockQuery)) {
                 for (Map.Entry<Integer, Double> entry : ingredientRequirements.entrySet()) {
                     checkStmt.setInt(1, entry.getKey());
@@ -386,6 +397,8 @@ public class DataRetriever {
 
                         if (stockAvailable < required) {
                             conn.rollback();
+
+                            // Récupérer le nom de l'ingrédient pour l'exception
                             String ingredientName = getIngredientNameById(entry.getKey());
 
                             throw new InsufficientStockException(
@@ -397,6 +410,8 @@ public class DataRetriever {
                     }
                 }
             }
+
+            // Étape 2: Insérer la commande
             try (PreparedStatement pstmt = conn.prepareStatement(insertOrderQuery)) {
                 pstmt.setString(1, orderToSave.getReference());
                 pstmt.setTimestamp(2, orderToSave.getCreationDateTime());
@@ -406,6 +421,8 @@ public class DataRetriever {
                     orderToSave.setId(rs.getInt("id"));
                 }
             }
+
+            // Étape 3: Insérer les plats de la commande
             try (PreparedStatement pstmt = conn.prepareStatement(insertDishOrderQuery)) {
                 for (DishOrder dishOrder : orderToSave.getDishOrders()) {
                     pstmt.setInt(1, orderToSave.getId());
@@ -414,6 +431,8 @@ public class DataRetriever {
                     pstmt.executeUpdate();
                 }
             }
+
+            // Étape 4: Mettre à jour les stocks
             try (PreparedStatement updateStmt = conn.prepareStatement(updateStockQuery)) {
                 for (Map.Entry<Integer, Double> entry : ingredientRequirements.entrySet()) {
                     updateStmt.setDouble(1, entry.getValue());
@@ -426,6 +445,7 @@ public class DataRetriever {
             System.out.println("Commande sauvegardée avec succès: " + orderToSave.getReference());
 
         } catch (InsufficientStockException e) {
+            // Propager l'exception de stock insuffisant
             throw e;
         } catch (SQLException e) {
             if (conn != null) {
@@ -452,19 +472,25 @@ public class DataRetriever {
         return orderToSave;
     }
 
-
+    /**
+     * Récupère une commande par sa référence
+     * @param reference La référence de la commande
+     * @return La commande trouvée
+     * @throws OrderNotFoundException Si la commande n'existe pas
+     */
     public Order findOrderByReference(String reference) throws OrderNotFoundException {
         Order order = null;
         String orderQuery = "SELECT id, reference, creation_datetime FROM \"Order\" WHERE reference = ?";
-        String dishOrderQuery = "SELECT dorder.id, do.id_dish, do.quantity, d.name, d.dishType::text, d.price " +
-                "FROM dish_order do " +
-                "JOIN Dish d ON do.id_dish = d.id " +
-                "WHERE do.id_order = ?";
+        String dishOrderQuery = "SELECT dorder.id, dorder.id_dish, dorder.quantity, d.name, d.dishType::text, d.price " +
+                "FROM dish_order dorder " +
+                "JOIN Dish d ON dorder.id_dish = d.id " +
+                "WHERE dorder.id_order = ?";
 
         Connection conn = null;
         try {
             conn = DBconnection.getDBConnection();
 
+            // Récupérer la commande
             try (PreparedStatement pstmt = conn.prepareStatement(orderQuery)) {
                 pstmt.setString(1, reference);
                 ResultSet rs = pstmt.executeQuery();
@@ -481,6 +507,8 @@ public class DataRetriever {
                     );
                 }
             }
+
+            // Récupérer les plats de la commande
             if (order != null) {
                 List<DishOrder> dishOrders = new ArrayList<>();
 
@@ -493,6 +521,8 @@ public class DataRetriever {
                         dishOrder.setId(rs.getInt("id"));
                         dishOrder.setQuantity(rs.getInt("quantity"));
                         dishOrder.setOrder(order);
+
+                        // Créer le plat
                         Dish dish = new Dish();
                         dish.setId(rs.getInt("id_dish"));
                         dish.setName(rs.getString("name"));
@@ -502,12 +532,15 @@ public class DataRetriever {
                         if (price != null) {
                             dish.setPrice(price.doubleValue());
                         }
+
                         dishOrder.setDish(dish);
                         dishOrders.add(dishOrder);
                     }
                 }
+
                 order.setDishOrders(dishOrders);
             }
+
         } catch (OrderNotFoundException e) {
             throw e;
         } catch (SQLException e) {
@@ -526,6 +559,10 @@ public class DataRetriever {
 
         return order;
     }
+
+    /**
+     * Méthode utilitaire pour récupérer le nom d'un ingrédient par son ID
+     */
     private String getIngredientNameById(int id) {
         String query = "SELECT name FROM ingredient WHERE id = ?";
         Connection conn = null;

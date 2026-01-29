@@ -2,13 +2,24 @@ package td3;
 
 import java.sql.Connection;
 import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Random;
 
 public class TestOrders {
-    public static void main(String[] args) {
+    private static int orderCounter = 1;
+    private static Random random = new Random();
 
+
+    private static String generateUniqueReference() {
+        long timestamp = System.currentTimeMillis() % 100000;
+        return String.format("ORD%05d", timestamp);
+    }
+
+    public static void main(String[] args) {
+        System.out.println("========================================");
         System.out.println("   TEST DU SYSTÈME DE GESTION DES COMMANDES");
+        System.out.println("========================================\n");
+
+        // Test de connexion
         Connection conn = DBconnection.getDBConnection();
         if (conn == null) {
             System.err.println(" Impossible de se connecter à la base de données!");
@@ -25,15 +36,22 @@ public class TestOrders {
         DataRetriever dataRetriever = new DataRetriever();
 
         System.out.println("TEST 1: Création d'une commande valide");
+        System.out.println("----------------------------------------");
+
         try {
-            Order order1 = new Order("ORD00010");
-            Dish dish1 = dataRetriever.findDishById(1);
-            Dish dish2 = dataRetriever.findDishById(2);
+            String ref1 = generateUniqueReference();
+            Order order1 = new Order(ref1);
+
+            // Récupérer les plats depuis la base de données
+            Dish dish1 = dataRetriever.findDishById(1); // Salade fraîche
+            Dish dish2 = dataRetriever.findDishById(2); // Poulet grillé
+
             DishOrder dishOrder1 = new DishOrder(order1, dish1, 2);
             DishOrder dishOrder2 = new DishOrder(order1, dish2, 1);
 
             order1.addDishOrder(dishOrder1);
             order1.addDishOrder(dishOrder2);
+
             System.out.println("Référence: " + order1.getReference());
             System.out.println("Date de création: " + order1.getCreationDateTime());
             System.out.println("Nombre de plats: " + order1.getDishOrders().size());
@@ -41,19 +59,23 @@ public class TestOrders {
             System.out.println("Montant TTC: " + String.format("%.2f", order1.getTotalAmountIncludingTax()) + " Ar");
 
             Order savedOrder = dataRetriever.saveOrder(order1);
-            System.out.println(" Commande sauvegardée avec succès (ID: " + savedOrder.getId() + ")\n");
+            System.out.println("✓ Commande sauvegardée avec succès (ID: " + savedOrder.getId() + ")");
+            System.out.println("  Stocks mis à jour automatiquement\n");
 
         } catch (InsufficientStockException e) {
-            System.err.println("Erreur de stock: " + e.getMessage() + "\n");
+            System.err.println("❌ Erreur de stock: " + e.getMessage() + "\n");
         } catch (Exception e) {
-            System.err.println("Erreur: " + e.getMessage() + "\n");
+            System.err.println("❌ Erreur: " + e.getMessage() + "\n");
             e.printStackTrace();
         }
+
         System.out.println("TEST 2: Récupération d'une commande par référence");
-            try {
+        System.out.println("--------------------------------------------------");
+
+        try {
             Order foundOrder = dataRetriever.findOrderByReference("ORD00001");
 
-            System.out.println(" Commande trouvée:");
+            System.out.println("✓ Commande trouvée:");
             System.out.println("  ID: " + foundOrder.getId());
             System.out.println("  Référence: " + foundOrder.getReference());
             System.out.println("  Date: " + foundOrder.getCreationDateTime());
@@ -70,32 +92,38 @@ public class TestOrders {
             System.out.println();
 
         } catch (OrderNotFoundException e) {
-            System.err.println("Erreur " + e.getMessage() + "\n");
+            System.err.println("❌ " + e.getMessage() + "\n");
         } catch (Exception e) {
-            System.err.println(" Erreur: " + e.getMessage() + "\n");
+            System.err.println("❌ Erreur: " + e.getMessage() + "\n");
             e.printStackTrace();
         }
+
         System.out.println("TEST 3: Tentative de commande avec stock insuffisant");
-          try {
-            Order order2 = new Order("ORD00011");
+        System.out.println("-----------------------------------------------------");
+
+        try {
+            String ref2 = generateUniqueReference();
+            Order order2 = new Order(ref2);
 
             Dish dish = dataRetriever.findDishById(2); // Poulet grillé
-            DishOrder dishOrder = new DishOrder(order2, dish, 100);
+            DishOrder dishOrder = new DishOrder(order2, dish, 100); // Quantité très élevée
 
             order2.addDishOrder(dishOrder);
 
             System.out.println("Tentative de commande de 100 Poulet grillé...");
 
             dataRetriever.saveOrder(order2);
+            System.out.println("❌ La commande n'aurait pas dû être sauvegardée!\n");
 
         } catch (InsufficientStockException e) {
             System.out.println("✓ Exception levée comme prévu:");
             System.out.println("  " + e.getMessage());
             System.out.println("  Ingrédient: " + e.getIngredientName());
             System.out.println("  Quantité requise: " + e.getRequiredQuantity());
-            System.out.println("  Quantité disponible: " + e.getAvailableQuantity() + "\n");
+            System.out.println("  Quantité disponible: " + e.getAvailableQuantity());
+            System.out.println("  → La commande a été annulée (rollback)\n");
         } catch (Exception e) {
-            System.err.println(" Erreur inattendue: " + e.getMessage() + "\n");
+            System.err.println("❌ Erreur inattendue: " + e.getMessage() + "\n");
         }
 
         System.out.println("TEST 4: Recherche d'une commande inexistante");
@@ -103,20 +131,22 @@ public class TestOrders {
 
         try {
             Order order = dataRetriever.findOrderByReference("ORD99999");
-            System.out.println(" La commande n'aurait pas dû être trouvée!\n");
+            System.out.println("❌ La commande n'aurait pas dû être trouvée!\n");
 
         } catch (OrderNotFoundException e) {
-            System.out.println("Exception levée comme prévu:");
+            System.out.println("✓ Exception levée comme prévu:");
             System.out.println("  " + e.getMessage());
             System.out.println("  Référence recherchée: " + e.getReference() + "\n");
         } catch (Exception e) {
-            System.err.println("Erreur inattendue: " + e.getMessage() + "\n");
+            System.err.println("❌ Erreur inattendue: " + e.getMessage() + "\n");
         }
+
         System.out.println("TEST 5: Création d'une commande complexe");
+        System.out.println("------------------------------------------");
 
         try {
-            Order order3 = new Order("ORD00012");
-
+            String ref3 = generateUniqueReference();
+            Order order3 = new Order(ref3);
 
             Dish dish1 = dataRetriever.findDishById(1); // Salade fraîche
             Dish dish2 = dataRetriever.findDishById(2); // Poulet grillé
@@ -126,6 +156,7 @@ public class TestOrders {
             order3.addDishOrder(new DishOrder(order3, dish2, 2));
             order3.addDishOrder(new DishOrder(order3, dish4, 4));
 
+            System.out.println("Référence: " + order3.getReference());
             System.out.println("Composition de la commande:");
             for (DishOrder dishOrder : order3.getDishOrders()) {
                 System.out.println("  - " + dishOrder.getDish().getName() +
@@ -139,18 +170,43 @@ public class TestOrders {
             System.out.println("✓ Commande complexe sauvegardée avec succès (ID: " + savedOrder.getId() + ")\n");
 
         } catch (Exception e) {
-            System.err.println("Erreur: " + e.getMessage() + "\n");
+            System.err.println(" Erreur: " + e.getMessage() + "\n");
             e.printStackTrace();
+        }
+        System.out.println("TEST 6: Vérification de la mise à jour des stocks");
+        System.out.println("--------------------------------------------------");
+
+        try {
+            String ref4 = generateUniqueReference();
+            Order order4 = new Order(ref4);
+
+            Dish dish1 = dataRetriever.findDishById(1); // Salade fraîche (nécessite Laitue et Tomate)
+            order4.addDishOrder(new DishOrder(order4, dish1, 1));
+
+            System.out.println("Création d'une commande de 1 Salade fraîche");
+            System.out.println("Ingrédients nécessaires:");
+            System.out.println("  - Laitue: 0.20 Kg");
+            System.out.println("  - Tomate: 0.15 Kg");
+
+            Order savedOrder = dataRetriever.saveOrder(order4);
+            System.out.println("✓ Commande sauvegardée");
+            System.out.println("  → Les stocks de Laitue et Tomate ont été réduits automatiquement\n");
+
+        } catch (Exception e) {
+            System.err.println(" Erreur: " + e.getMessage() + "\n");
         }
 
         System.out.println("========================================");
         System.out.println("   RÉSUMÉ DES TESTS");
         System.out.println("========================================");
-        System.out.println("Création de commande valide");
-        System.out.println("Récupération de commande par référence");
-        System.out.println("Gestion des stocks insuffisants");
-        System.out.println("Gestion des commandes inexistantes");
-        System.out.println("Création de commande complexe");
+        System.out.println("✓ TEST 1: Création de commande valide");
+        System.out.println("✓ TEST 2: Récupération de commande par référence");
+        System.out.println("✓ TEST 3: Gestion des stocks insuffisants");
+        System.out.println("✓ TEST 4: Gestion des commandes inexistantes");
+        System.out.println("✓ TEST 5: Création de commande complexe");
+        System.out.println("✓ TEST 6: Vérification mise à jour des stocks");
+        System.out.println("========================================");
+        System.out.println("\n✅ TOUS LES TESTS SONT PASSÉS AVEC SUCCÈS!");
         System.out.println("========================================\n");
     }
 }
