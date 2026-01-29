@@ -352,13 +352,7 @@ public class DataRetriever {
         return findIngredientsByCriteria(ingredientName, null, null, 0, 10);
     }
 
-    /**
-     * Sauvegarde une commande dans la base de données
-     * Vérifie d'abord que les ingrédients en stock sont suffisants pour tous les plats
-     * @param orderToSave La commande à sauvegarder
-     * @return La commande sauvegardée avec son ID
-     * @throws InsufficientStockException Si un ingrédient n'est pas en quantité suffisante
-     */
+
     public Order saveOrder(Order orderToSave) throws InsufficientStockException {
         String insertOrderQuery = "INSERT INTO \"Order\" (reference, creation_datetime) VALUES (?, ?) RETURNING id";
         String insertDishOrderQuery = "INSERT INTO dish_order (id_order, id_dish, quantity) VALUES (?, ?, ?)";
@@ -410,8 +404,6 @@ public class DataRetriever {
                     }
                 }
             }
-
-            // Étape 2: Insérer la commande
             try (PreparedStatement pstmt = conn.prepareStatement(insertOrderQuery)) {
                 pstmt.setString(1, orderToSave.getReference());
                 pstmt.setTimestamp(2, orderToSave.getCreationDateTime());
@@ -472,12 +464,7 @@ public class DataRetriever {
         return orderToSave;
     }
 
-    /**
-     * Récupère une commande par sa référence
-     * @param reference La référence de la commande
-     * @return La commande trouvée
-     * @throws OrderNotFoundException Si la commande n'existe pas
-     */
+
     public Order findOrderByReference(String reference) throws OrderNotFoundException {
         Order order = null;
         String orderQuery = "SELECT id, reference, creation_datetime FROM \"Order\" WHERE reference = ?";
@@ -560,9 +547,6 @@ public class DataRetriever {
         return order;
     }
 
-    /**
-     * Méthode utilitaire pour récupérer le nom d'un ingrédient par son ID
-     */
     private String getIngredientNameById(int id) {
         String query = "SELECT name FROM ingredient WHERE id = ?";
         Connection conn = null;

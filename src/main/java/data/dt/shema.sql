@@ -72,7 +72,11 @@ FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY tablename;
 
-
+create type payement_status as enum ('UNPAID','PAID');
+CREATE TABLE sale (
+    id serial primary key,
+    creation_datetime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 select * from  dish_ingredients;
 select * from dish;
 select * from ingredient;
