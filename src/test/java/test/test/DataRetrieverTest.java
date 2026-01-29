@@ -1,6 +1,7 @@
 package test.test;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Order;
 import td3.*;
 import td3.DishTypeEnum;
 
@@ -21,7 +22,6 @@ public class DataRetrieverTest {
         System.out.println("=== Initialisation des tests DataRetriever ===");
         dataRetriever = new DataRetriever();
 
-        // Vérifier la connexion à la base de données
         assertNotNull(DBconnection.getDBConnection(),
                 "La connexion à la base de données devrait être établie");
     }
@@ -32,10 +32,8 @@ public class DataRetrieverTest {
     public void testFindDishById_ExistingDish() {
         System.out.println("\n--- Test: findDishById avec ID existant ---");
 
-        // Récupérer le plat avec ID = 1 (devrait exister selon vos données)
         Dish dish = dataRetriever.findDishById(1);
 
-        // Vérifications
         assertNotNull(dish, "Le plat devrait être trouvé");
         assertEquals(1, dish.getId(), "L'ID du plat devrait être 1");
         assertNotNull(dish.getName(), "Le nom du plat ne devrait pas être null");
@@ -43,9 +41,8 @@ public class DataRetrieverTest {
 
         System.out.println("Plat trouvé: " + dish.getName() + " (" + dish.getDishType() + ")");
         System.out.println("Nombre d'ingrédients: " + dish.getIngredients().size());
+        System.out.println("Liste des ingrédients:");
         System.out.println("Prix calculé: " + dish.getDishPrice() + " Ar");
-
-        // Vérifier que la liste d'ingrédients est initialisée
         assertNotNull(dish.getIngredients(), "La liste d'ingrédients ne devrait pas être null");
     }
 
@@ -55,10 +52,8 @@ public class DataRetrieverTest {
     public void testFindDishById_NonExistingDish() {
         System.out.println("\n--- Test: findDishById avec ID inexistant ---");
 
-        // Récupérer un plat avec un ID très grand qui n'existe probablement pas
         Dish dish = dataRetriever.findDishById(99999);
 
-        // Vérification
         assertNull(dish, "Le plat ne devrait pas être trouvé");
         System.out.println("Résultat attendu: null - OK");
     }
@@ -74,7 +69,6 @@ public class DataRetrieverTest {
 
         List<Ingredients> ingredients = dataRetriever.findIngredients(page, size);
 
-        // Vérifications
         assertNotNull(ingredients, "La liste ne devrait pas être null");
         assertTrue(ingredients.size() <= size,
                 "Le nombre d'ingrédients ne devrait pas dépasser " + size);
@@ -101,6 +95,10 @@ public class DataRetrieverTest {
 
         assertNotNull(ingredients, "La liste ne devrait pas être null");
         System.out.println("Ingrédients page 1: " + ingredients.size());
+        System.out.println("Liste des ingrédients:");
+        for (Ingredients ingredient : ingredients) {
+            System.out.println("- " + ingredient.getName());
+        }
     }
 
     @Test
@@ -110,8 +108,6 @@ public class DataRetrieverTest {
         System.out.println("\n--- Test: createIngredients - Ingrédients valides ---");
 
         List<Ingredients> newIngredients = new ArrayList<>();
-
-        // Créer des ingrédients avec des noms uniques basés sur timestamp
         long timestamp = System.currentTimeMillis();
 
         Ingredients ingredient1 = new Ingredients();
@@ -126,10 +122,8 @@ public class DataRetrieverTest {
         ingredient2.setCategory(CategoryEnum.VEGETABLE);
         newIngredients.add(ingredient2);
 
-        // Exécution
         List<Ingredients> created = dataRetriever.createIngredients(newIngredients);
 
-        // Vérifications
         assertNotNull(created, "La liste des ingrédients créés ne devrait pas être null");
         assertEquals(2, created.size(), "Deux ingrédients devraient être créés");
 
@@ -146,15 +140,11 @@ public class DataRetrieverTest {
         System.out.println("\n--- Test: createIngredients - Avec doublon ---");
 
         List<Ingredients> newIngredients = new ArrayList<>();
-
-        // Utiliser un nom existant (Laitue existe dans vos données initiales)
         Ingredients duplicate = new Ingredients();
         duplicate.setName("Laitue");
         duplicate.setPrice(800.0);
         duplicate.setCategory(CategoryEnum.VEGETABLE);
         newIngredients.add(duplicate);
-
-        // Vérification qu'une exception est levée
         assertThrows(DuplicateIngredientException.class, () -> {
             dataRetriever.createIngredients(newIngredients);
         }, "Une DuplicateIngredientException devrait être levée");
@@ -167,13 +157,9 @@ public class DataRetrieverTest {
     @DisplayName("Test 7: Sauvegarde d'un nouveau plat")
     public void testSaveDish_Insert() {
         System.out.println("\n--- Test: saveDish - Insertion nouveau plat ---");
-
-        // Créer un nouveau plat
         Dish newDish = new Dish();
         newDish.setName("Test_Salade_César_" + System.currentTimeMillis());
         newDish.setDishType(DishTypeEnum.START);
-
-        // Ajouter des ingrédients existants
         Ingredients ing1 = new Ingredients();
         ing1.setId(1); // Laitue
         ing1.setPrice(800.0);
@@ -183,11 +169,7 @@ public class DataRetrieverTest {
         ing2.setId(2); // Tomate
         ing2.setPrice(600.0);
         newDish.addIngredients(ing2);
-
-        // Sauvegarde
         Dish savedDish = dataRetriever.saveDish(newDish);
-
-        // Vérifications
         assertNotNull(savedDish, "Le plat sauvegardé ne devrait pas être null");
         assertTrue(savedDish.getId() > 0, "Un ID devrait être assigné");
 
@@ -202,8 +184,6 @@ public class DataRetrieverTest {
     @DisplayName("Test 8: Mise à jour d'un plat existant")
     public void testSaveDish_Update() {
         System.out.println("\n--- Test: saveDish - Mise à jour ---");
-
-        // Récupérer le plat créé dans le test précédent
         if (createdDishId == 0) {
             System.out.println("Aucun plat créé, test ignoré");
             return;
@@ -211,16 +191,10 @@ public class DataRetrieverTest {
 
         Dish dishToUpdate = dataRetriever.findDishById(createdDishId);
         assertNotNull(dishToUpdate, "Le plat devrait exister");
-
-        // Modifier le plat
         String newName = "Test_Salade_Modifiée_" + System.currentTimeMillis();
         dishToUpdate.setName(newName);
         dishToUpdate.setDishType(DishTypeEnum.MAIN);
-
-        // Mettre à jour
         Dish updatedDish = dataRetriever.saveDish(dishToUpdate);
-
-        // Vérifications
         assertNotNull(updatedDish, "Le plat mis à jour ne devrait pas être null");
         assertEquals(createdDishId, updatedDish.getId(), "L'ID devrait rester le même");
         assertEquals(newName, updatedDish.getName(), "Le nom devrait être mis à jour");
@@ -233,11 +207,7 @@ public class DataRetrieverTest {
     @DisplayName("Test 9: Recherche par nom d'ingrédient")
     public void testFindIngredientsByCriteria_ByName() {
         System.out.println("\n--- Test: findIngredientsByCriteria - Par nom ---");
-
-        // Rechercher les ingrédients contenant "tomate"
         List<Ingredients> ingredients = dataRetriever.findIngredientsByCriteria("tomate", null, null, 0, 10);
-
-        // Vérifications
         assertNotNull(ingredients, "La liste ne devrait pas être null");
         System.out.println("Ingrédients trouvés contenant 'tomate': " + ingredients.size());
 
@@ -253,11 +223,7 @@ public class DataRetrieverTest {
     @DisplayName("Test 10: Recherche par catégorie")
     public void testFindIngredientsByCriteria_ByCategory() {
         System.out.println("\n--- Test: findIngredientsByCriteria - Par catégorie ---");
-
-        // Rechercher les ingrédients de catégorie VEGETABLE
         List<Ingredients> ingredients = dataRetriever.findIngredientsByCriteria(null, CategoryEnum.VEGETABLE, null, 0, 10);
-
-        // Vérifications
         assertNotNull(ingredients, "La liste ne devrait pas être null");
         System.out.println("Ingrédients VEGETABLE trouvés: " + ingredients.size());
 
@@ -273,17 +239,13 @@ public class DataRetrieverTest {
     @DisplayName("Test 11: Recherche multicritères")
     public void testFindIngredientsByCriteria_MultiCriteria() {
         System.out.println("\n--- Test: findIngredientsByCriteria - Multicritères ---");
-
-        // Rechercher avec plusieurs critères
         List<Ingredients> ingredients = dataRetriever.findIngredientsByCriteria(
-                "a", // Nom contenant 'a'
-                CategoryEnum.VEGETABLE, // Catégorie VEGETABLE
-                null, // Pas de filtre sur le plat
+                "a",
+                CategoryEnum.VEGETABLE,
+                null,
                 0,
                 5
         );
-
-        // Vérifications
         assertNotNull(ingredients, "La liste ne devrait pas être null");
         System.out.println("Ingrédients trouvés (multicritères): " + ingredients.size());
 
@@ -297,11 +259,7 @@ public class DataRetrieverTest {
     @DisplayName("Test 12: Recherche sans critères (tous les ingrédients)")
     public void testFindIngredientsByCriteria_NoCriteria() {
         System.out.println("\n--- Test: findIngredientsByCriteria - Sans critères ---");
-
-        // Rechercher sans critères (devrait retourner tous les ingrédients paginés)
         List<Ingredients> ingredients = dataRetriever.findIngredientsByCriteria(null, null, null, 0, 100);
-
-        // Vérifications
         assertNotNull(ingredients, "La liste ne devrait pas être null");
         assertTrue(ingredients.size() > 0, "Il devrait y avoir au moins un ingrédient");
         System.out.println("Total d'ingrédients trouvés: " + ingredients.size());
@@ -312,11 +270,7 @@ public class DataRetrieverTest {
     @DisplayName("Test 13: Méthode surchargée findIngredientsByCriteria")
     public void testFindIngredientsByCriteria_Overloaded() {
         System.out.println("\n--- Test: findIngredientsByCriteria - Méthode surchargée ---");
-
-        // Utiliser la méthode surchargée avec uniquement le nom
         List<Ingredients> ingredients = dataRetriever.findIngredientsByCriteria("poulet");
-
-        // Vérifications
         assertNotNull(ingredients, "La liste ne devrait pas être null");
         System.out.println("Ingrédients trouvés avec 'poulet': " + ingredients.size());
     }
@@ -325,8 +279,5 @@ public class DataRetrieverTest {
     public void tearDown() {
         System.out.println("\n=== Fin des tests DataRetriever ===");
         System.out.println("Tous les tests sont terminés.");
-
-        // Note: Dans un environnement de production, vous devriez nettoyer
-        // les données de test créées (supprimer le plat créé, etc.)
     }
 }
