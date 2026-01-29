@@ -51,5 +51,7 @@ public class Main {
         } else {
             System.err.println("\n Impossible de continuer sans connexion à la base de données");
         }
+
     }
+
 }

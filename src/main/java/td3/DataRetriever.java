@@ -4,6 +4,8 @@ import java.sql.*;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class DataRetriever {
 
@@ -29,7 +31,6 @@ public class DataRetriever {
                     dish.setName(rs.getString("name"));
                     dish.setDishType(DishTypeEnum.valueOf(rs.getString("dishType")));
 
-                    // CORRECTION PostgreSQL: Utiliser getBigDecimal() pour les types NUMERIC
                     BigDecimal price = rs.getBigDecimal("price");
                     if (price != null) {
                         dish.setPrice(price.doubleValue());
@@ -73,6 +74,7 @@ public class DataRetriever {
 
         return dish;
     }
+
     public List<Ingredients> findIngredients(int page, int size) {
         List<Ingredients> ingredients = new ArrayList<>();
         int offset = page * size;
@@ -348,5 +350,205 @@ public class DataRetriever {
 
     public List<Ingredients> findIngredientsByCriteria(String ingredientName) {
         return findIngredientsByCriteria(ingredientName, null, null, 0, 10);
+    }
+
+    public Order saveOrder(Order orderToSave) throws InsufficientStockException {
+        String insertOrderQuery = "INSERT INTO \"Order\" (reference, creation_datetime) VALUES (?, ?) RETURNING id";
+        String insertDishOrderQuery = "INSERT INTO dish_order (id_order, id_dish, quantity) VALUES (?, ?, ?)";
+        String checkStockQuery = "SELECT quantity_in_stock FROM ingredient WHERE id = ?";
+        String updateStockQuery = "UPDATE ingredient SET quantity_in_stock = quantity_in_stock - ? WHERE id = ?";
+
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+            conn.setAutoCommit(false);
+            Map<Integer, Double> ingredientRequirements = new HashMap<>();
+
+            for (DishOrder dishOrder : orderToSave.getDishOrders()) {
+                Dish dish = findDishById(dishOrder.getDish().getId());
+
+                for (Ingredients ingredient : dish.getIngredients()) {
+                    int ingredientId = ingredient.getId();
+                    double requiredQty = ingredient.getRequired_quantity() * dishOrder.getQuantity();
+
+                    ingredientRequirements.put(ingredientId,
+                            ingredientRequirements.getOrDefault(ingredientId, 0.0) + requiredQty);
+                }
+            }
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkStockQuery)) {
+                for (Map.Entry<Integer, Double> entry : ingredientRequirements.entrySet()) {
+                    checkStmt.setInt(1, entry.getKey());
+                    ResultSet rs = checkStmt.executeQuery();
+
+                    if (rs.next()) {
+                        double stockAvailable = rs.getDouble("quantity_in_stock");
+                        double required = entry.getValue();
+
+                        if (stockAvailable < required) {
+                            conn.rollback();
+                            String ingredientName = getIngredientNameById(entry.getKey());
+
+                            throw new InsufficientStockException(
+                                    "Stock insuffisant pour l'ingrédient '" + ingredientName +
+                                            "'. Requis: " + required + ", Disponible: " + stockAvailable,
+                                    ingredientName, required, stockAvailable
+                            );
+                        }
+                    }
+                }
+            }
+            try (PreparedStatement pstmt = conn.prepareStatement(insertOrderQuery)) {
+                pstmt.setString(1, orderToSave.getReference());
+                pstmt.setTimestamp(2, orderToSave.getCreationDateTime());
+
+                ResultSet rs = pstmt.executeQuery();
+                if (rs.next()) {
+                    orderToSave.setId(rs.getInt("id"));
+                }
+            }
+            try (PreparedStatement pstmt = conn.prepareStatement(insertDishOrderQuery)) {
+                for (DishOrder dishOrder : orderToSave.getDishOrders()) {
+                    pstmt.setInt(1, orderToSave.getId());
+                    pstmt.setInt(2, dishOrder.getDish().getId());
+                    pstmt.setInt(3, dishOrder.getQuantity());
+                    pstmt.executeUpdate();
+                }
+            }
+            try (PreparedStatement updateStmt = conn.prepareStatement(updateStockQuery)) {
+                for (Map.Entry<Integer, Double> entry : ingredientRequirements.entrySet()) {
+                    updateStmt.setDouble(1, entry.getValue());
+                    updateStmt.setInt(2, entry.getKey());
+                    updateStmt.executeUpdate();
+                }
+            }
+
+            conn.commit();
+            System.out.println("Commande sauvegardée avec succès: " + orderToSave.getReference());
+
+        } catch (InsufficientStockException e) {
+            throw e;
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+            System.err.println("Erreur lors de la sauvegarde de la commande: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Erreur lors de la sauvegarde de la commande", e);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return orderToSave;
+    }
+
+
+    public Order findOrderByReference(String reference) throws OrderNotFoundException {
+        Order order = null;
+        String orderQuery = "SELECT id, reference, creation_datetime FROM \"Order\" WHERE reference = ?";
+        String dishOrderQuery = "SELECT dorder.id, do.id_dish, do.quantity, d.name, d.dishType::text, d.price " +
+                "FROM dish_order do " +
+                "JOIN Dish d ON do.id_dish = d.id " +
+                "WHERE do.id_order = ?";
+
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+
+            try (PreparedStatement pstmt = conn.prepareStatement(orderQuery)) {
+                pstmt.setString(1, reference);
+                ResultSet rs = pstmt.executeQuery();
+
+                if (rs.next()) {
+                    order = new Order();
+                    order.setId(rs.getInt("id"));
+                    order.setReference(rs.getString("reference"));
+                    order.setCreationDateTime(rs.getTimestamp("creation_datetime"));
+                } else {
+                    throw new OrderNotFoundException(
+                            "Aucune commande trouvée avec la référence: " + reference,
+                            reference
+                    );
+                }
+            }
+            if (order != null) {
+                List<DishOrder> dishOrders = new ArrayList<>();
+
+                try (PreparedStatement pstmt = conn.prepareStatement(dishOrderQuery)) {
+                    pstmt.setInt(1, order.getId());
+                    ResultSet rs = pstmt.executeQuery();
+
+                    while (rs.next()) {
+                        DishOrder dishOrder = new DishOrder();
+                        dishOrder.setId(rs.getInt("id"));
+                        dishOrder.setQuantity(rs.getInt("quantity"));
+                        dishOrder.setOrder(order);
+                        Dish dish = new Dish();
+                        dish.setId(rs.getInt("id_dish"));
+                        dish.setName(rs.getString("name"));
+                        dish.setDishType(DishTypeEnum.valueOf(rs.getString("dishType")));
+
+                        BigDecimal price = rs.getBigDecimal("price");
+                        if (price != null) {
+                            dish.setPrice(price.doubleValue());
+                        }
+                        dishOrder.setDish(dish);
+                        dishOrders.add(dishOrder);
+                    }
+                }
+                order.setDishOrders(dishOrders);
+            }
+        } catch (OrderNotFoundException e) {
+            throw e;
+        } catch (SQLException e) {
+            System.err.println("Erreur lors de la récupération de la commande: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Erreur lors de la récupération de la commande", e);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return order;
+    }
+    private String getIngredientNameById(int id) {
+        String query = "SELECT name FROM ingredient WHERE id = ?";
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+            try (PreparedStatement pstmt = conn.prepareStatement(query)) {
+                pstmt.setInt(1, id);
+                ResultSet rs = pstmt.executeQuery();
+                if (rs.next()) {
+                    return rs.getString("name");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return "Inconnu";
     }
 }
