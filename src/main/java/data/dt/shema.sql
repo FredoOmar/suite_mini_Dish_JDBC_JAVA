@@ -72,11 +72,74 @@ FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY tablename;
 
-create type payement_status as enum ('UNPAID','PAID');
-CREATE TABLE sale (
-    id serial primary key,
-    creation_datetime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TYPE payment_status_enum AS ENUM ('PAID', 'UNPAID');
+
+ALTER TABLE "Order"
+    ADD COLUMN IF NOT EXISTS payment_status payment_status_enum DEFAULT 'UNPAID',
+    ADD COLUMN IF NOT EXISTS id_sale INTEGER;
+
+CREATE TABLE IF NOT EXISTS Sale (
+                                    id SERIAL PRIMARY KEY,
+                                    creation_datetime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                    id_order INTEGER NOT NULL UNIQUE REFERENCES "Order"(id) ON DELETE CASCADE
 );
+
+ALTER TABLE "Order"
+    ADD CONSTRAINT fk_order_sale FOREIGN KEY (id_sale) REFERENCES Sale(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_order_payment_status ON "Order"(payment_status);
+CREATE INDEX IF NOT EXISTS idx_order_id_sale ON "Order"(id_sale);
+CREATE INDEX IF NOT EXISTS idx_sale_id_order ON Sale(id_order);
+
+
+UPDATE "Order" SET payment_status = 'UNPAID' WHERE payment_status IS NULL;
+
+
+COMMENT ON TYPE payment_status_enum IS 'Statut de paiement d''une commande: PAID (payée) ou UNPAID (non payée)';
+COMMENT ON TABLE Sale IS 'Table des ventes - Une vente est créée à partir d''une commande payée';
+COMMENT ON COLUMN "Order".payment_status IS 'Statut de paiement de la commande';
+COMMENT ON COLUMN "Order".id_sale IS 'ID de la vente associée (nullable) - relation OneToOne';
+COMMENT ON COLUMN Sale.creation_datetime IS 'Date et heure de création de la vente';
+COMMENT ON COLUMN Sale.id_order IS 'ID de la commande associée - relation OneToOne';
+
+--Vérification des modifications
+SELECT
+    'Tables créées:' as info,
+    COUNT(*) as count
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN ('Order', 'Sale');
+
+-- Afficher la structure de la table Order
+SELECT
+    column_name,
+    data_type,
+    is_nullable,
+    column_default
+FROM information_schema.columns
+WHERE table_name = 'Order'
+ORDER BY ordinal_position;
+
+-- Afficher la structure de la table Sale
+SELECT
+    column_name,
+    data_type,
+    is_nullable,
+    column_default
+FROM information_schema.columns
+WHERE table_name = 'sale'
+ORDER BY ordinal_position;
+
+-- Message de confirmation
+SELECT '✓ Modifications terminées - Système de ventes prêt' as statut;
+
+
+
+
+
+
+
+
 select * from  dish_ingredients;
 select * from dish;
 select * from ingredient;

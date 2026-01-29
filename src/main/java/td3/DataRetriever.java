@@ -352,9 +352,137 @@ public class DataRetriever {
         return findIngredientsByCriteria(ingredientName, null, null, 0, 10);
     }
 
+    /**
+     * Sauvegarde un ingrédient dans la base de données
+     * @param ingredientToSave L'ingrédient à sauvegarder
+     * @return L'ingrédient sauvegardé avec son ID
+     */
+    public Ingredients saveIngredient(Ingredients ingredientToSave) {
+        String checkQuery = "SELECT id FROM Ingredient WHERE id = ?";
+        String insertQuery = "INSERT INTO Ingredient (name, price, category, quantity_in_stock) " +
+                "VALUES (?, ?, ?::ingredient_category, ?) RETURNING id";
+        String updateQuery = "UPDATE Ingredient SET name = ?, price = ?, category = ?::ingredient_category, " +
+                "quantity_in_stock = ? WHERE id = ?";
 
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+            conn.setAutoCommit(false);
+
+            boolean exists = false;
+            if (ingredientToSave.getId() > 0) {
+                try (PreparedStatement pstmt = conn.prepareStatement(checkQuery)) {
+                    pstmt.setInt(1, ingredientToSave.getId());
+                    ResultSet rs = pstmt.executeQuery();
+                    exists = rs.next();
+                }
+            }
+
+            if (!exists) {
+                // Insertion
+                try (PreparedStatement pstmt = conn.prepareStatement(insertQuery)) {
+                    pstmt.setString(1, ingredientToSave.getName());
+                    pstmt.setDouble(2, ingredientToSave.getPrice());
+                    pstmt.setString(3, ingredientToSave.getCategory().name());
+                    pstmt.setDouble(4, 0.0); // Stock initial à 0
+
+                    ResultSet rs = pstmt.executeQuery();
+                    if (rs.next()) {
+                        ingredientToSave.setId(rs.getInt("id"));
+                    }
+                }
+            } else {
+                // Mise à jour
+                try (PreparedStatement pstmt = conn.prepareStatement(updateQuery)) {
+                    pstmt.setString(1, ingredientToSave.getName());
+                    pstmt.setDouble(2, ingredientToSave.getPrice());
+                    pstmt.setString(3, ingredientToSave.getCategory().name());
+                    pstmt.setDouble(4, 0.0);
+                    pstmt.setInt(5, ingredientToSave.getId());
+                    pstmt.executeUpdate();
+                }
+            }
+
+            conn.commit();
+            System.out.println("Ingrédient sauvegardé avec succès: " + ingredientToSave.getName());
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+            System.err.println("Erreur lors de la sauvegarde de l'ingrédient: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Erreur lors de la sauvegarde de l'ingrédient", e);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return ingredientToSave;
+    }
+
+    /**
+     * Recherche un ingrédient par son ID
+     * @param idIngredient L'ID de l'ingrédient
+     * @return L'ingrédient trouvé ou null
+     */
+    public Ingredients findIngredientById(int idIngredient) {
+        Ingredients ingredient = null;
+        String query = "SELECT id, name, price, category::text, quantity_in_stock FROM Ingredient WHERE id = ?";
+
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+
+            try (PreparedStatement pstmt = conn.prepareStatement(query)) {
+                pstmt.setInt(1, idIngredient);
+                ResultSet rs = pstmt.executeQuery();
+
+                if (rs.next()) {
+                    ingredient = new Ingredients();
+                    ingredient.setId(rs.getInt("id"));
+                    ingredient.setName(rs.getString("name"));
+                    ingredient.setPrice(rs.getDouble("price"));
+                    ingredient.setCategory(CategoryEnum.valueOf(rs.getString("category")));
+                }
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Erreur lors de la récupération de l'ingrédient: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return ingredient;
+    }
+
+    /**
+     * Sauvegarde une commande dans la base de données
+     * Vérifie d'abord que les ingrédients en stock sont suffisants pour tous les plats
+     * @param orderToSave La commande à sauvegarder
+     * @return La commande sauvegardée avec son ID
+     * @throws InsufficientStockException Si un ingrédient n'est pas en quantité suffisante
+     */
     public Order saveOrder(Order orderToSave) throws InsufficientStockException {
-        String insertOrderQuery = "INSERT INTO \"Order\" (reference, creation_datetime) VALUES (?, ?) RETURNING id";
+        String insertOrderQuery = "INSERT INTO \"Order\" (reference, creation_datetime, payment_status) " +
+                "VALUES (?, ?, ?::payment_status_enum) RETURNING id";
         String insertDishOrderQuery = "INSERT INTO dish_order (id_order, id_dish, quantity) VALUES (?, ?, ?)";
         String checkStockQuery = "SELECT quantity_in_stock FROM ingredient WHERE id = ?";
         String updateStockQuery = "UPDATE ingredient SET quantity_in_stock = quantity_in_stock - ? WHERE id = ?";
@@ -404,9 +532,12 @@ public class DataRetriever {
                     }
                 }
             }
+
+            // Étape 2: Insérer la commande
             try (PreparedStatement pstmt = conn.prepareStatement(insertOrderQuery)) {
                 pstmt.setString(1, orderToSave.getReference());
                 pstmt.setTimestamp(2, orderToSave.getCreationDateTime());
+                pstmt.setString(3, orderToSave.getPaymentStatus().name());
 
                 ResultSet rs = pstmt.executeQuery();
                 if (rs.next()) {
@@ -464,10 +595,16 @@ public class DataRetriever {
         return orderToSave;
     }
 
-
+    /**
+     * Récupère une commande par sa référence
+     * @param reference La référence de la commande
+     * @return La commande trouvée
+     * @throws OrderNotFoundException Si la commande n'existe pas
+     */
     public Order findOrderByReference(String reference) throws OrderNotFoundException {
         Order order = null;
-        String orderQuery = "SELECT id, reference, creation_datetime FROM \"Order\" WHERE reference = ?";
+        String orderQuery = "SELECT id, reference, creation_datetime, payment_status::text, id_sale " +
+                "FROM \"Order\" WHERE reference = ?";
         String dishOrderQuery = "SELECT dorder.id, dorder.id_dish, dorder.quantity, d.name, d.dishType::text, d.price " +
                 "FROM dish_order dorder " +
                 "JOIN Dish d ON dorder.id_dish = d.id " +
@@ -487,6 +624,13 @@ public class DataRetriever {
                     order.setId(rs.getInt("id"));
                     order.setReference(rs.getString("reference"));
                     order.setCreationDateTime(rs.getTimestamp("creation_datetime"));
+                    order.setPaymentStatus(PaymentStatusEnum.valueOf(rs.getString("payment_status")));
+
+                    // id_sale peut être NULL
+                    int idSale = rs.getInt("id_sale");
+                    if (!rs.wasNull()) {
+                        order.setIdSale(idSale);
+                    }
                 } else {
                     throw new OrderNotFoundException(
                             "Aucune commande trouvée avec la référence: " + reference,
@@ -547,6 +691,9 @@ public class DataRetriever {
         return order;
     }
 
+    /**
+     * Méthode utilitaire pour récupérer le nom d'un ingrédient par son ID
+     */
     private String getIngredientNameById(int id) {
         String query = "SELECT name FROM ingredient WHERE id = ?";
         Connection conn = null;
@@ -571,5 +718,224 @@ public class DataRetriever {
             }
         }
         return "Inconnu";
+    }
+
+    /**
+     * Crée une vente à partir d'une commande PAYÉE
+     * @param order La commande à transformer en vente
+     * @return La vente créée
+     * @throws OrderAlreadyPaidException Si la commande n'est pas marquée comme PAID
+     * @throws OrderAlreadyHasSaleException Si la commande est déjà associée à une vente
+     */
+    public Sale createSaleFromOrder(Order order)
+            throws OrderAlreadyPaidException, OrderAlreadyHasSaleException {
+
+        // Vérification 1: La commande doit être PAYÉE
+        if (order.getPaymentStatus() != PaymentStatusEnum.PAID) {
+            throw new OrderAlreadyPaidException(
+                    "Impossible de créer une vente : la commande '" + order.getReference() +
+                            "' n'est pas encore payée (statut: " + order.getPaymentStatus() + ")",
+                    order.getReference()
+            );
+        }
+
+        // Vérification 2: La commande ne doit pas déjà avoir une vente associée
+        if (order.getIdSale() != null) {
+            throw new OrderAlreadyHasSaleException(
+                    "Impossible de créer une vente : la commande '" + order.getReference() +
+                            "' est déjà associée à une vente (ID: " + order.getIdSale() + ")",
+                    order.getReference(),
+                    order.getIdSale()
+            );
+        }
+
+        Sale sale = null;
+        String insertSaleQuery = "INSERT INTO Sale (creation_datetime, id_order) VALUES (?, ?) RETURNING id";
+        String updateOrderQuery = "UPDATE \"Order\" SET id_sale = ? WHERE id = ?";
+
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+            conn.setAutoCommit(false);
+
+            // Créer la vente
+            sale = new Sale(order);
+
+            try (PreparedStatement pstmt = conn.prepareStatement(insertSaleQuery)) {
+                pstmt.setTimestamp(1, sale.getCreationDateTime());
+                pstmt.setInt(2, order.getId());
+
+                ResultSet rs = pstmt.executeQuery();
+                if (rs.next()) {
+                    sale.setId(rs.getInt("id"));
+                }
+            }
+
+            // Mettre à jour la commande avec l'ID de la vente
+            try (PreparedStatement pstmt = conn.prepareStatement(updateOrderQuery)) {
+                pstmt.setInt(1, sale.getId());
+                pstmt.setInt(2, order.getId());
+                pstmt.executeUpdate();
+            }
+
+            // Mettre à jour l'objet Order en mémoire
+            order.setIdSale(sale.getId());
+
+            conn.commit();
+            System.out.println("Vente créée avec succès (ID: " + sale.getId() +
+                    ") pour la commande " + order.getReference());
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+            System.err.println("Erreur lors de la création de la vente: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Erreur lors de la création de la vente", e);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return sale;
+    }
+
+    /**
+     * Récupère une vente par son ID
+     * @param idSale L'ID de la vente
+     * @return La vente trouvée ou null
+     */
+    public Sale findSaleById(int idSale) {
+        Sale sale = null;
+        String saleQuery = "SELECT id, creation_datetime, id_order FROM Sale WHERE id = ?";
+
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+
+            try (PreparedStatement pstmt = conn.prepareStatement(saleQuery)) {
+                pstmt.setInt(1, idSale);
+                ResultSet rs = pstmt.executeQuery();
+
+                if (rs.next()) {
+                    sale = new Sale();
+                    sale.setId(rs.getInt("id"));
+                    sale.setCreationDateTime(rs.getTimestamp("creation_datetime"));
+
+                    // Récupérer la commande associée
+                    int idOrder = rs.getInt("id_order");
+                    Order order = findOrderById(idOrder);
+                    sale.setOrder(order);
+                }
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Erreur lors de la récupération de la vente: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return sale;
+    }
+
+    /**
+     * Récupère une commande par son ID (méthode utilitaire)
+     * @param idOrder L'ID de la commande
+     * @return La commande trouvée ou null
+     */
+    private Order findOrderById(int idOrder) {
+        Order order = null;
+        String orderQuery = "SELECT id, reference, creation_datetime, payment_status::text, id_sale " +
+                "FROM \"Order\" WHERE id = ?";
+        String dishOrderQuery = "SELECT dorder.id, dorder.id_dish, dorder.quantity, d.name, d.dishType::text, d.price " +
+                "FROM dish_order dorder " +
+                "JOIN Dish d ON dorder.id_dish = d.id " +
+                "WHERE dorder.id_order = ?";
+
+        Connection conn = null;
+        try {
+            conn = DBconnection.getDBConnection();
+
+            try (PreparedStatement pstmt = conn.prepareStatement(orderQuery)) {
+                pstmt.setInt(1, idOrder);
+                ResultSet rs = pstmt.executeQuery();
+
+                if (rs.next()) {
+                    order = new Order();
+                    order.setId(rs.getInt("id"));
+                    order.setReference(rs.getString("reference"));
+                    order.setCreationDateTime(rs.getTimestamp("creation_datetime"));
+                    order.setPaymentStatus(PaymentStatusEnum.valueOf(rs.getString("payment_status")));
+
+                    int idSale = rs.getInt("id_sale");
+                    if (!rs.wasNull()) {
+                        order.setIdSale(idSale);
+                    }
+                }
+            }
+
+            // Récupérer les plats de la commande
+            if (order != null) {
+                List<DishOrder> dishOrders = new ArrayList<>();
+
+                try (PreparedStatement pstmt = conn.prepareStatement(dishOrderQuery)) {
+                    pstmt.setInt(1, idOrder);
+                    ResultSet rs = pstmt.executeQuery();
+
+                    while (rs.next()) {
+                        DishOrder dishOrder = new DishOrder();
+                        dishOrder.setId(rs.getInt("id"));
+                        dishOrder.setQuantity(rs.getInt("quantity"));
+                        dishOrder.setOrder(order);
+
+                        Dish dish = new Dish();
+                        dish.setId(rs.getInt("id_dish"));
+                        dish.setName(rs.getString("name"));
+                        dish.setDishType(DishTypeEnum.valueOf(rs.getString("dishType")));
+
+                        BigDecimal price = rs.getBigDecimal("price");
+                        if (price != null) {
+                            dish.setPrice(price.doubleValue());
+                        }
+
+                        dishOrder.setDish(dish);
+                        dishOrders.add(dishOrder);
+                    }
+                }
+
+                order.setDishOrders(dishOrders);
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Erreur lors de la récupération de la commande: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return order;
     }
 }

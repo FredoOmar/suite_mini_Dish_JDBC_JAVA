@@ -63,9 +63,9 @@ public class TestOrders {
             System.out.println("  Stocks mis à jour automatiquement\n");
 
         } catch (InsufficientStockException e) {
-            System.err.println("❌ Erreur de stock: " + e.getMessage() + "\n");
+            System.err.println(" Erreur de stock: " + e.getMessage() + "\n");
         } catch (Exception e) {
-            System.err.println("❌ Erreur: " + e.getMessage() + "\n");
+            System.err.println(" Erreur: " + e.getMessage() + "\n");
             e.printStackTrace();
         }
 
@@ -92,9 +92,9 @@ public class TestOrders {
             System.out.println();
 
         } catch (OrderNotFoundException e) {
-            System.err.println("❌ " + e.getMessage() + "\n");
+            System.err.println("Erreur " + e.getMessage() + "\n");
         } catch (Exception e) {
-            System.err.println("❌ Erreur: " + e.getMessage() + "\n");
+            System.err.println(" Erreur: " + e.getMessage() + "\n");
             e.printStackTrace();
         }
 
@@ -113,7 +113,7 @@ public class TestOrders {
             System.out.println("Tentative de commande de 100 Poulet grillé...");
 
             dataRetriever.saveOrder(order2);
-            System.out.println("❌ La commande n'aurait pas dû être sauvegardée!\n");
+            System.out.println(" La commande n'aurait pas dû être sauvegardée!\n");
 
         } catch (InsufficientStockException e) {
             System.out.println("✓ Exception levée comme prévu:");
@@ -123,7 +123,7 @@ public class TestOrders {
             System.out.println("  Quantité disponible: " + e.getAvailableQuantity());
             System.out.println("  → La commande a été annulée (rollback)\n");
         } catch (Exception e) {
-            System.err.println("❌ Erreur inattendue: " + e.getMessage() + "\n");
+            System.err.println(" Erreur inattendue: " + e.getMessage() + "\n");
         }
 
         System.out.println("TEST 4: Recherche d'une commande inexistante");
@@ -131,14 +131,14 @@ public class TestOrders {
 
         try {
             Order order = dataRetriever.findOrderByReference("ORD99999");
-            System.out.println("❌ La commande n'aurait pas dû être trouvée!\n");
+            System.out.println(" La commande n'aurait pas dû être trouvée!\n");
 
         } catch (OrderNotFoundException e) {
             System.out.println("✓ Exception levée comme prévu:");
             System.out.println("  " + e.getMessage());
             System.out.println("  Référence recherchée: " + e.getReference() + "\n");
         } catch (Exception e) {
-            System.err.println("❌ Erreur inattendue: " + e.getMessage() + "\n");
+            System.err.println(" Erreur inattendue: " + e.getMessage() + "\n");
         }
 
         System.out.println("TEST 5: Création d'une commande complexe");
@@ -206,7 +206,7 @@ public class TestOrders {
         System.out.println("✓ TEST 5: Création de commande complexe");
         System.out.println("✓ TEST 6: Vérification mise à jour des stocks");
         System.out.println("========================================");
-        System.out.println("\n✅ TOUS LES TESTS SONT PASSÉS AVEC SUCCÈS!");
+        System.out.println("\n TOUS LES TESTS SONT PASSÉS AVEC SUCCÈS!");
         System.out.println("========================================\n");
     }
 }
